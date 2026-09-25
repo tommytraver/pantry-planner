@@ -1,3 +1,5 @@
+import os
+import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -20,14 +22,26 @@ from models import (
     UserRead,
 )
 from nutrition import search_foods
-from suggestions import suggest_meals
 from rate_limits import check_and_record_suggestion
+from suggestions import suggest_meals
 
-def get_owned_item(session: Session, item_id: int, user: User) -> PantryItem:
-    item = session.get(PantryItem, item_id)
-    if not item or item.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Item not found")
-    return item
+# Comma-separated list of frontend URLs allowed to call this API
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
+
+# What every demo account starts with
+DEMO_PANTRY = [
+    ("chicken breast", 3, "lb"),
+    ("eggs", 24, "count"),
+    ("greek yogurt", 32, "oz"),
+    ("jasmine rice", 2, "lb"),
+    ("broccoli", 1, "lb"),
+    ("sweet potato", 2, "lb"),
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,7 +53,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -73,12 +87,37 @@ def login(data: UserLogin, session: Session = Depends(get_session)) -> Token:
     return Token(access_token=create_access_token(user.id))
 
 
+@app.post("/auth/demo")
+def demo_login(session: Session = Depends(get_session)) -> Token:
+    # Each visitor gets their own throwaway account, so demo users never collide
+    user = User(
+        email=f"demo-{secrets.token_hex(6)}@demo.pantryplanner",
+        password_hash=hash_password(secrets.token_urlsafe(32)),
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    for name, quantity, unit in DEMO_PANTRY:
+        session.add(PantryItem(user_id=user.id, name=name, quantity=quantity, unit=unit))
+    session.commit()
+
+    return Token(access_token=create_access_token(user.id))
+
+
 @app.get("/auth/me")
 def me(user: User = Depends(get_current_user)) -> UserRead:
     return user
 
 
 # ---------- Pantry ----------
+
+def get_owned_item(session: Session, item_id: int, user: User) -> PantryItem:
+    item = session.get(PantryItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
+
 
 @app.get("/pantry")
 def list_pantry(
@@ -105,6 +144,7 @@ def add_pantry_item(
     session.refresh(db_item)
     return db_item
 
+
 @app.patch("/pantry/{item_id}")
 def update_pantry_item(
     item_id: int,
@@ -129,6 +169,7 @@ def delete_pantry_item(
     item = get_owned_item(session, item_id, user)
     session.delete(item)
     session.commit()
+
 
 @app.put("/pantry/{item_id}/food")
 def set_item_food(

@@ -1,0 +1,56 @@
+:root {
+  --bg: #1c1a17;
+  --surface: #26231f;
+  --line: #3a362f;
+  --text: #ede6da;
+  --text-muted: #a39a8c;
+  --yolk: #f2b544;
+  --yolk-hover: #f5c466;
+  --yolk-ink: #2a1f06;
+  --sage: #9dbf8a;
+  --danger: #f08a7e;
+
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+
+  --font-body: "Figtree", system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  line-height: 1.15;
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--yolk);
+  outline-offset: 2px;
+}

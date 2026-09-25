@@ -36,3 +36,7 @@ def test_suggestions_are_rate_limited(client, make_user, monkeypatch):
     assert client.post("/meals/suggest", headers=headers).status_code == 200
     assert client.post("/meals/suggest", headers=headers).status_code == 200
     assert client.post("/meals/suggest", headers=headers).status_code == 429
+
+def test_parse_meals_accepts_decimal_numbers():
+    meal = MEAL.replace('"protein_g": 45', '"protein_g": 45.5')
+    assert parse_meals(f"[{meal}]")[0].protein_g == 45.5

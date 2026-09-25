@@ -70,6 +70,7 @@ async def search_foods(query: str, limit: int = 8) -> list[dict]:
     query = clean_query(query)
     if not query:
         return []
+
     api_key = os.environ.get("USDA_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="USDA_API_KEY is not set")
@@ -78,7 +79,8 @@ async def search_foods(query: str, limit: int = 8) -> list[dict]:
         try:
             res = await client.post(
                 USDA_URL,
-                params={"api_key": api_key},
+                # Key goes in a header, not the URL, so it never appears in logs
+                headers={"X-Api-Key": api_key},
                 json={
                     "query": query,
                     "dataType": ["Foundation", "SR Legacy"],

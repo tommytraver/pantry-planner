@@ -40,3 +40,19 @@ def test_pantry_requires_login(client):
 def test_garbage_token_rejected(client):
     res = client.get("/pantry", headers={"Authorization": "Bearer not-a-real-token"})
     assert res.status_code == 401
+
+def test_demo_login_creates_stocked_pantry(client):
+    res = client.post("/auth/demo")
+    assert res.status_code == 200
+    headers = {"Authorization": f"Bearer {res.json()['access_token']}"}
+    assert len(client.get("/pantry", headers=headers).json()) == 6
+
+
+def test_demo_accounts_are_separate(client):
+    first = {"Authorization": f"Bearer {client.post('/auth/demo').json()['access_token']}"}
+    second = {"Authorization": f"Bearer {client.post('/auth/demo').json()['access_token']}"}
+
+    client.post("/pantry", json={"name": "tuna", "quantity": 4, "unit": "count"}, headers=first)
+
+    assert len(client.get("/pantry", headers=first).json()) == 7
+    assert len(client.get("/pantry", headers=second).json()) == 6

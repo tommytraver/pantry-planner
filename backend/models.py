@@ -103,8 +103,8 @@ class MealSuggestion(SQLModel):
     name: str
     ingredients: list[str]
     steps: list[str]
-    protein_g: int
-    calories: int
+    protein_g: float
+    calories: float
     dishes: int
 
 # One row per AI suggestion request, used for rate limiting
