@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 
 import httpx
 from fastapi import HTTPException
@@ -27,8 +28,15 @@ def get_calories(food: dict) -> float | None:
             return value
     return None
 
+def clean_query(query: str) -> str:
+    # USDA's search treats characters like / and quotes as query syntax,
+    # so replace anything unusual with a space
+    return re.sub(r"[^\w\s%,\-]", " ", query).strip()
 
-async def search_foods(query: str, limit: int = 5) -> list[dict]:
+async def search_foods(query: str, limit: int = 8) -> list[dict]:
+    query = clean_query(query)
+    if not query:
+        return []
     api_key = os.environ.get("USDA_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="USDA_API_KEY is not set")

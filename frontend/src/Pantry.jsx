@@ -4,6 +4,12 @@ import { apiFetch, getErrorMessage } from "./api";
 // Must match the Unit list in backend/models.py
 const UNITS = ["g", "kg", "oz", "lb", "ml", "l", "cup", "tbsp", "tsp", "count"];
 
+const fmt = (v) => (v == null ? "?" : Math.round(v));
+
+function macroLine(calories, protein, carbs, fat) {
+  return `per 100g: ${fmt(calories)} kcal · ${fmt(protein)}g protein · ${fmt(carbs)}g carbs · ${fmt(fat)}g fat`;
+}
+
 function UnitSelect({ value, onChange }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} required>
@@ -19,21 +25,58 @@ function UnitSelect({ value, onChange }) {
   );
 }
 
-function NutritionInfo({ info }) {
-  if (!info) return null;
-  if (info.status === "loading") return <p className="nutrition">Loading...</p>;
-  if (info.status === "error")
-    return <p className="nutrition error">Couldn't load nutrition.</p>;
-  if (info.status === "none") return <p className="nutrition">No match found.</p>;
-
-  const { description, calories, protein_g, carbs_g, fat_g } = info.data;
-  const fmt = (v) => (v == null ? "?" : Math.round(v));
-
+function FoodInfo({ item }) {
+  if (!item.fdc_id) return null;
   return (
     <p className="nutrition">
-      {description}, per 100g: {fmt(calories)} kcal · {fmt(protein_g)}g protein ·{" "}
-      {fmt(carbs_g)}g carbs · {fmt(fat_g)}g fat
+      {item.food_description},{" "}
+      {macroLine(item.calories_100g, item.protein_100g, item.carbs_100g, item.fat_100g)}
     </p>
+  );
+}
+
+function FoodPicker({ picker, onQueryChange, onSearch, onPick, onClose }) {
+  return (
+    <div className="picker">
+      <form
+        className="picker-search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSearch();
+        }}
+      >
+        <input
+          value={picker.query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          maxLength={100}
+          required
+        />
+        <button type="submit">Search</button>
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </form>
+
+      {picker.status === "loading" && <p className="nutrition">Searching...</p>}
+      {picker.status === "error" && <p className="nutrition error">{picker.error}</p>}
+      {picker.status === "done" && picker.results.length === 0 && (
+        <p className="nutrition">No matches. Try different words, like "egg whole raw".</p>
+      )}
+
+      <ul className="picker-results">
+        {picker.results.map((food) => (
+          <li key={food.fdc_id}>
+            <div>
+              <div>{food.description}</div>
+              <div className="nutrition">
+                {macroLine(food.calories, food.protein_g, food.carbs_g, food.fat_g)}
+              </div>
+            </div>
+            <button onClick={() => onPick(food)}>Use this</button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -70,7 +113,9 @@ function Pantry({ onLogout }) {
   const [editQuantity, setEditQuantity] = useState("");
   const [editUnit, setEditUnit] = useState("");
 
-  const [nutrition, setNutrition] = useState({});
+  // { itemId, query, status, results, error } or null when closed
+  const [picker, setPicker] = useState(null);
+
   const [meals, setMeals] = useState([]);
   const [mealStatus, setMealStatus] = useState("idle");
   const [mealError, setMealError] = useState("");
@@ -90,6 +135,10 @@ function Pantry({ onLogout }) {
     loadPantry();
   }, []);
 
+  function replaceItem(updated) {
+    setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+  }
+
   async function addItem(e) {
     e.preventDefault();
     try {
@@ -102,7 +151,7 @@ function Pantry({ onLogout }) {
         return;
       }
       const newItem = await res.json();
-      setItems([...items, newItem]);
+      setItems((prev) => [...prev, newItem]);
       setName("");
       setQuantity("");
       setUnit("");
@@ -115,7 +164,6 @@ function Pantry({ onLogout }) {
   function startEdit(item) {
     setEditingId(item.id);
     setEditQuantity(String(item.quantity));
-    // Older items may have a unit that's no longer allowed; make the user pick
     setEditUnit(UNITS.includes(item.unit) ? item.unit : "");
   }
 
@@ -129,8 +177,7 @@ function Pantry({ onLogout }) {
         setError(await getErrorMessage(res, "Couldn't update item."));
         return;
       }
-      const updated = await res.json();
-      setItems(items.map((item) => (item.id === id ? updated : item)));
+      replaceItem(await res.json());
       setEditingId(null);
       setError("");
     } catch {
@@ -145,31 +192,60 @@ function Pantry({ onLogout }) {
         setError(await getErrorMessage(res, "Couldn't delete item."));
         return;
       }
-      setItems(items.filter((item) => item.id !== id));
-      setNutrition((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
+      setItems((prev) => prev.filter((item) => item.id !== id));
+      setPicker((p) => (p && p.itemId === id ? null : p));
     } catch {
       setError("Can't reach the server.");
     }
   }
 
-  async function loadNutrition(item) {
-    setNutrition((prev) => ({ ...prev, [item.id]: { status: "loading" } }));
+  // Only apply an update if the picker is still open for the same item
+  function updatePicker(itemId, changes) {
+    setPicker((p) => (p && p.itemId === itemId ? { ...p, ...changes } : p));
+  }
+
+  async function runSearch(itemId, query) {
+    setPicker({ itemId, query, status: "loading", results: [], error: "" });
     try {
-      const res = await apiFetch(`/nutrition?query=${encodeURIComponent(item.name)}`);
-      if (!res.ok) throw new Error();
-      const results = await res.json();
-      setNutrition((prev) => ({
-        ...prev,
-        [item.id]: results.length
-          ? { status: "done", data: results[0] }
-          : { status: "none" },
-      }));
+      const res = await apiFetch(`/nutrition?query=${encodeURIComponent(query)}`);
+      if (!res.ok) {
+        updatePicker(itemId, {
+          status: "error",
+          error: await getErrorMessage(res, "Search failed."),
+        });
+        return;
+      }
+      updatePicker(itemId, { status: "done", results: await res.json() });
     } catch {
-      setNutrition((prev) => ({ ...prev, [item.id]: { status: "error" } }));
+      updatePicker(itemId, { status: "error", error: "Can't reach the server." });
+    }
+  }
+
+  function togglePicker(item) {
+    if (picker && picker.itemId === item.id) {
+      setPicker(null);
+    } else {
+      runSearch(item.id, item.name);
+    }
+  }
+
+  async function pickFood(itemId, food) {
+    try {
+      const res = await apiFetch(`/pantry/${itemId}/food`, {
+        method: "PUT",
+        body: JSON.stringify(food),
+      });
+      if (!res.ok) {
+        updatePicker(itemId, {
+          status: "error",
+          error: await getErrorMessage(res, "Couldn't save match."),
+        });
+        return;
+      }
+      replaceItem(await res.json());
+      setPicker(null);
+    } catch {
+      updatePicker(itemId, { status: "error", error: "Can't reach the server." });
     }
   }
 
@@ -226,7 +302,9 @@ function Pantry({ onLogout }) {
           {item.name} ({item.quantity} {item.unit})
         </span>
         <div className="item-actions">
-          <button onClick={() => loadNutrition(item)}>Nutrition</button>
+          <button onClick={() => togglePicker(item)}>
+            {item.fdc_id ? "Change food" : "Match food"}
+          </button>
           <button onClick={() => startEdit(item)}>Edit</button>
           <button onClick={() => deleteItem(item.id)}>Delete</button>
         </div>
@@ -274,7 +352,16 @@ function Pantry({ onLogout }) {
           {items.map((item) => (
             <li key={item.id}>
               {renderItem(item)}
-              <NutritionInfo info={nutrition[item.id]} />
+              <FoodInfo item={item} />
+              {picker && picker.itemId === item.id && (
+                <FoodPicker
+                  picker={picker}
+                  onQueryChange={(query) => updatePicker(item.id, { query })}
+                  onSearch={() => runSearch(item.id, picker.query)}
+                  onPick={(food) => pickFood(item.id, food)}
+                  onClose={() => setPicker(null)}
+                />
+              )}
             </li>
           ))}
         </ul>

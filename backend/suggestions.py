@@ -16,11 +16,19 @@ Assume basic staples (salt, pepper, oil, common spices) are available.
 Respond with ONLY a JSON array. No markdown, no commentary. Each element must be:
 {"name": string, "ingredients": [string], "steps": [string], "protein_g": integer, "calories": integer, "dishes": integer}
 
-protein_g and calories are per-serving estimates. dishes is the number of pots, pans, and dishes to wash."""
+protein_g and calories are per-serving estimates. dishes is the number of pots, pans, and dishes to wash. When per-100g 
+nutrition data is provided for an ingredient, use it to estimate protein_g and calories."""
+
+
+def format_item(item: PantryItem) -> str:
+    line = f"- {item.name} ({item.quantity} {item.unit})"
+    if item.protein_100g is not None and item.calories_100g is not None:
+        line += f", per 100g: {item.protein_100g:g}g protein, {item.calories_100g:g} kcal"
+    return line
 
 
 def format_pantry(items: list[PantryItem]) -> str:
-    return "\n".join(f"- {item.name} ({item.quantity} {item.unit})" for item in items)
+    return "\n".join(format_item(item) for item in items)
 
 
 def parse_meals(text: str) -> list[MealSuggestion]:

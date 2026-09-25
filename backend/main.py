@@ -21,7 +21,13 @@ from models import (
 )
 from nutrition import search_foods
 from suggestions import suggest_meals
+from rate_limits import check_and_record_suggestion
 
+def get_owned_item(session: Session, item_id: int, user: User) -> PantryItem:
+    item = session.get(PantryItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -106,10 +112,7 @@ def update_pantry_item(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> PantryItemRead:
-    item = session.get(PantryItem, item_id)
-    if not item or item.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Item not found")
-
+    item = get_owned_item(session, item_id, user)
     item.sqlmodel_update(changes.model_dump(exclude_unset=True, exclude_none=True))
     session.add(item)
     session.commit()
@@ -123,11 +126,28 @@ def delete_pantry_item(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    item = session.get(PantryItem, item_id)
-    if not item or item.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Item not found")
+    item = get_owned_item(session, item_id, user)
     session.delete(item)
     session.commit()
+
+@app.put("/pantry/{item_id}/food")
+def set_item_food(
+    item_id: int,
+    food: NutritionResult,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> PantryItemRead:
+    item = get_owned_item(session, item_id, user)
+    item.fdc_id = food.fdc_id
+    item.food_description = food.description
+    item.calories_100g = food.calories
+    item.protein_100g = food.protein_g
+    item.fat_100g = food.fat_g
+    item.carbs_100g = food.carbs_g
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
 
 
 # ---------- Nutrition + AI ----------
@@ -145,4 +165,5 @@ async def suggest(
     items = session.exec(select(PantryItem).where(PantryItem.user_id == user.id)).all()
     if not items:
         raise HTTPException(status_code=400, detail="Add pantry items first")
+    check_and_record_suggestion(session, user.id)
     return await suggest_meals(items)

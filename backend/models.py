@@ -1,7 +1,9 @@
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from pydantic import EmailStr, StringConstraints
 from pydantic import Field as PydanticField
+from sqlalchemy import DateTime
 from sqlmodel import Field, SQLModel
 
 # ---------- Reusable validated types ----------
@@ -51,6 +53,13 @@ class PantryItem(SQLModel, table=True):
     name: str
     quantity: float
     unit: str
+    # The USDA food the user matched to this item (per 100g)
+    fdc_id: int | None = None
+    food_description: str | None = None
+    calories_100g: float | None = None
+    protein_100g: float | None = None
+    fat_100g: float | None = None
+    carbs_100g: float | None = None
 
 
 class PantryItemCreate(SQLModel):
@@ -71,6 +80,12 @@ class PantryItemRead(SQLModel):
     name: str
     quantity: float
     unit: str
+    fdc_id: int | None = None
+    food_description: str | None = None
+    calories_100g: float | None = None
+    protein_100g: float | None = None
+    fat_100g: float | None = None
+    carbs_100g: float | None = None
 
 
 # ---------- External data ----------
@@ -91,3 +106,14 @@ class MealSuggestion(SQLModel):
     protein_g: int
     calories: int
     dishes: int
+
+# One row per AI suggestion request, used for rate limiting
+class SuggestionRequest(SQLModel, table=True):
+    __tablename__ = "suggestion_requests"
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_type=DateTime(timezone=True),
+        index=True,
+    )
