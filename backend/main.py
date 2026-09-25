@@ -1,8 +1,20 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import Session, select
+
+from database import create_tables, get_session
+from models import PantryItem, PantryItemCreate, PantryItemRead
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_tables()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,45 +24,31 @@ app.add_middleware(
 )
 
 
-# What the client sends when adding an item
-class PantryItemCreate(BaseModel):
-    name: str = Field(min_length=1)
-    quantity: float = Field(gt=0)
-    unit: str = Field(min_length=1)
-
-
-# What the API sends back (same fields plus an id)
-class PantryItem(PantryItemCreate):
-    id: int
-
-
-pantry: list[PantryItem] = []
-next_id = 1
-
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
 @app.get("/pantry")
-def list_pantry() -> list[PantryItem]:
-    return pantry
+def list_pantry(session: Session = Depends(get_session)) -> list[PantryItemRead]:
+    return session.exec(select(PantryItem).order_by(PantryItem.id)).all()
 
 
 @app.post("/pantry", status_code=201)
-def add_pantry_item(item: PantryItemCreate) -> PantryItem:
-    global next_id
-    new_item = PantryItem(id=next_id, **item.model_dump())
-    pantry.append(new_item)
-    next_id += 1
-    return new_item
+def add_pantry_item(
+    item: PantryItemCreate, session: Session = Depends(get_session)
+) -> PantryItemRead:
+    db_item = PantryItem.model_validate(item)
+    session.add(db_item)
+    session.commit()
+    session.refresh(db_item)
+    return db_item
 
 
 @app.delete("/pantry/{item_id}", status_code=204)
-def delete_pantry_item(item_id: int):
-    for i, item in enumerate(pantry):
-        if item.id == item_id:
-            pantry.pop(i)
-            return
-    raise HTTPException(status_code=404, detail="Item not found")
+def delete_pantry_item(item_id: int, session: Session = Depends(get_session)):
+    item = session.get(PantryItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    session.delete(item)
+    session.commit()
