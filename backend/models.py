@@ -1,5 +1,37 @@
+from pydantic import EmailStr
 from sqlmodel import Field, SQLModel
 
+
+# ---------- Users ----------
+
+class User(SQLModel, table=True):
+    __tablename__ = "users"
+    id: int | None = Field(default=None, primary_key=True)
+    email: str = Field(unique=True, index=True)
+    password_hash: str
+
+
+class UserCreate(SQLModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+
+
+class UserLogin(SQLModel):
+    email: EmailStr
+    password: str
+
+
+class UserRead(SQLModel):
+    id: int
+    email: str
+
+
+class Token(SQLModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+# ---------- Pantry ----------
 
 class PantryItemBase(SQLModel):
     name: str = Field(min_length=1)
@@ -7,22 +39,22 @@ class PantryItemBase(SQLModel):
     unit: str = Field(min_length=1)
 
 
-# The actual database table
 class PantryItem(PantryItemBase, table=True):
     __tablename__ = "pantry_items"
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
 
 
-# What the client sends
 class PantryItemCreate(PantryItemBase):
     pass
 
 
-# What the API returns
 class PantryItemRead(PantryItemBase):
     id: int
 
-# Nutrition per 100g, simplified from the USDA response
+
+# ---------- External data ----------
+
 class NutritionResult(SQLModel):
     fdc_id: int
     description: str
@@ -30,6 +62,7 @@ class NutritionResult(SQLModel):
     protein_g: float | None
     fat_g: float | None
     carbs_g: float | None
+
 
 class MealSuggestion(SQLModel):
     name: str

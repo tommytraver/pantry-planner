@@ -1,9 +1,11 @@
 import os
+import logging
 
 import httpx
 from fastapi import HTTPException
 
 USDA_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
+logger = logging.getLogger("uvicorn.error")
 
 # USDA identifies nutrients by number
 PROTEIN, FAT, CARBS = "203", "204", "205"
@@ -43,7 +45,8 @@ async def search_foods(query: str, limit: int = 5) -> list[dict]:
                 },
             )
             res.raise_for_status()
-        except httpx.HTTPError:
+        except httpx.HTTPError as e:
+            logger.error("USDA request failed: %r", e)
             raise HTTPException(status_code=502, detail="USDA API request failed")
 
     return [

@@ -72,3 +72,29 @@
   font-size: 0.9rem;
   margin: 0 0 0.5rem;
 }
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 320px;
+}
+
+.auth-form input {
+  padding: 0.5rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 1rem;
+  color: #3b82f6;
+  cursor: pointer;
+}
