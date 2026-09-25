@@ -1,5 +1,16 @@
-from pydantic import EmailStr
+from typing import Annotated, Literal
+
+from pydantic import EmailStr, StringConstraints
+from pydantic import Field as PydanticField
 from sqlmodel import Field, SQLModel
+
+# ---------- Reusable validated types ----------
+
+Unit = Literal["g", "kg", "oz", "lb", "ml", "l", "cup", "tbsp", "tsp", "count"]
+ItemName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+]
+Quantity = Annotated[float, PydanticField(gt=0, le=100_000)]
 
 
 # ---------- Users ----------
@@ -33,24 +44,33 @@ class Token(SQLModel):
 
 # ---------- Pantry ----------
 
-class PantryItemBase(SQLModel):
-    name: str = Field(min_length=1)
-    quantity: float = Field(gt=0)
-    unit: str = Field(min_length=1)
-
-
-class PantryItem(PantryItemBase, table=True):
+class PantryItem(SQLModel, table=True):
     __tablename__ = "pantry_items"
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="users.id", index=True)
+    name: str
+    quantity: float
+    unit: str
 
 
-class PantryItemCreate(PantryItemBase):
-    pass
+class PantryItemCreate(SQLModel):
+    name: ItemName
+    quantity: Quantity
+    unit: Unit
 
 
-class PantryItemRead(PantryItemBase):
+# Every field optional: the client sends only what it wants to change
+class PantryItemUpdate(SQLModel):
+    name: ItemName | None = None
+    quantity: Quantity | None = None
+    unit: Unit | None = None
+
+
+class PantryItemRead(SQLModel):
     id: int
+    name: str
+    quantity: float
+    unit: str
 
 
 # ---------- External data ----------

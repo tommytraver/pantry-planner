@@ -12,6 +12,7 @@ from models import (
     PantryItem,
     PantryItemCreate,
     PantryItemRead,
+    PantryItemUpdate,
     Token,
     User,
     UserCreate,
@@ -97,6 +98,23 @@ def add_pantry_item(
     session.commit()
     session.refresh(db_item)
     return db_item
+
+@app.patch("/pantry/{item_id}")
+def update_pantry_item(
+    item_id: int,
+    changes: PantryItemUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> PantryItemRead:
+    item = session.get(PantryItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    item.sqlmodel_update(changes.model_dump(exclude_unset=True, exclude_none=True))
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
 
 
 @app.delete("/pantry/{item_id}", status_code=204)

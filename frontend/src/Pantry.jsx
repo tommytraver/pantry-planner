@@ -1,5 +1,23 @@
 import { useEffect, useState } from "react";
-import { apiFetch } from "./api";
+import { apiFetch, getErrorMessage } from "./api";
+
+// Must match the Unit list in backend/models.py
+const UNITS = ["g", "kg", "oz", "lb", "ml", "l", "cup", "tbsp", "tsp", "count"];
+
+function UnitSelect({ value, onChange }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} required>
+      <option value="" disabled>
+        Unit
+      </option>
+      {UNITS.map((u) => (
+        <option key={u} value={u}>
+          {u}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function NutritionInfo({ info }) {
   if (!info) return null;
@@ -41,13 +59,21 @@ function MealCard({ meal }) {
 
 function Pantry({ onLogout }) {
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [unit, setUnit] = useState("");
-  const [error, setError] = useState("");
+
+  const [editingId, setEditingId] = useState(null);
+  const [editQuantity, setEditQuantity] = useState("");
+  const [editUnit, setEditUnit] = useState("");
+
   const [nutrition, setNutrition] = useState({});
   const [meals, setMeals] = useState([]);
   const [mealStatus, setMealStatus] = useState("idle");
+  const [mealError, setMealError] = useState("");
 
   useEffect(() => {
     async function loadPantry() {
@@ -57,6 +83,8 @@ function Pantry({ onLogout }) {
         setItems(await res.json());
       } catch {
         setError("Can't load your pantry.");
+      } finally {
+        setLoading(false);
       }
     }
     loadPantry();
@@ -69,7 +97,10 @@ function Pantry({ onLogout }) {
         method: "POST",
         body: JSON.stringify({ name, quantity: Number(quantity), unit }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        setError(await getErrorMessage(res, "Couldn't add item."));
+        return;
+      }
       const newItem = await res.json();
       setItems([...items, newItem]);
       setName("");
@@ -77,17 +108,51 @@ function Pantry({ onLogout }) {
       setUnit("");
       setError("");
     } catch {
-      setError("Couldn't add item. Check that every field is filled in.");
+      setError("Can't reach the server.");
+    }
+  }
+
+  function startEdit(item) {
+    setEditingId(item.id);
+    setEditQuantity(String(item.quantity));
+    // Older items may have a unit that's no longer allowed; make the user pick
+    setEditUnit(UNITS.includes(item.unit) ? item.unit : "");
+  }
+
+  async function saveEdit(id) {
+    try {
+      const res = await apiFetch(`/pantry/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ quantity: Number(editQuantity), unit: editUnit }),
+      });
+      if (!res.ok) {
+        setError(await getErrorMessage(res, "Couldn't update item."));
+        return;
+      }
+      const updated = await res.json();
+      setItems(items.map((item) => (item.id === id ? updated : item)));
+      setEditingId(null);
+      setError("");
+    } catch {
+      setError("Can't reach the server.");
     }
   }
 
   async function deleteItem(id) {
     try {
       const res = await apiFetch(`/pantry/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        setError(await getErrorMessage(res, "Couldn't delete item."));
+        return;
+      }
       setItems(items.filter((item) => item.id !== id));
+      setNutrition((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     } catch {
-      setError("Couldn't delete item.");
+      setError("Can't reach the server.");
     }
   }
 
@@ -110,14 +175,63 @@ function Pantry({ onLogout }) {
 
   async function suggestMeals() {
     setMealStatus("loading");
+    setMealError("");
     try {
       const res = await apiFetch("/meals/suggest", { method: "POST" });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        setMealError(await getErrorMessage(res, "Couldn't get suggestions."));
+        setMealStatus("error");
+        return;
+      }
       setMeals(await res.json());
       setMealStatus("done");
     } catch {
+      setMealError("Can't reach the server.");
       setMealStatus("error");
     }
+  }
+
+  function renderItem(item) {
+    if (editingId === item.id) {
+      return (
+        <form
+          className="edit-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveEdit(item.id);
+          }}
+        >
+          <span className="item-name">{item.name}</span>
+          <input
+            type="number"
+            step="any"
+            min="0.01"
+            max="100000"
+            value={editQuantity}
+            onChange={(e) => setEditQuantity(e.target.value)}
+            required
+          />
+          <UnitSelect value={editUnit} onChange={setEditUnit} />
+          <button type="submit">Save</button>
+          <button type="button" onClick={() => setEditingId(null)}>
+            Cancel
+          </button>
+        </form>
+      );
+    }
+
+    return (
+      <div className="item-row">
+        <span>
+          {item.name} ({item.quantity} {item.unit})
+        </span>
+        <div className="item-actions">
+          <button onClick={() => loadNutrition(item)}>Nutrition</button>
+          <button onClick={() => startEdit(item)}>Edit</button>
+          <button onClick={() => deleteItem(item.id)}>Delete</button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -132,39 +246,34 @@ function Pantry({ onLogout }) {
           placeholder="Item (e.g. chicken breast)"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          maxLength={100}
+          required
         />
         <input
           type="number"
           step="any"
+          min="0.01"
+          max="100000"
           placeholder="Qty"
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
+          required
         />
-        <input
-          placeholder="Unit (lbs, oz, count)"
-          value={unit}
-          onChange={(e) => setUnit(e.target.value)}
-        />
+        <UnitSelect value={unit} onChange={setUnit} />
         <button type="submit">Add</button>
       </form>
 
       {error && <p className="error">{error}</p>}
 
-      {items.length === 0 ? (
+      {loading ? (
+        <p className="empty">Loading your pantry...</p>
+      ) : items.length === 0 ? (
         <p className="empty">Pantry's empty. Add something above.</p>
       ) : (
         <ul className="pantry-list">
           {items.map((item) => (
             <li key={item.id}>
-              <div className="item-row">
-                <span>
-                  {item.name} ({item.quantity} {item.unit})
-                </span>
-                <div className="item-actions">
-                  <button onClick={() => loadNutrition(item)}>Nutrition</button>
-                  <button onClick={() => deleteItem(item.id)}>Delete</button>
-                </div>
-              </div>
+              {renderItem(item)}
               <NutritionInfo info={nutrition[item.id]} />
             </li>
           ))}
@@ -178,11 +287,9 @@ function Pantry({ onLogout }) {
         >
           {mealStatus === "loading" ? "Thinking..." : "Suggest high-protein meals"}
         </button>
-        {mealStatus === "error" && (
-          <p className="error">Couldn't get suggestions. Try again.</p>
-        )}
-        {meals.map((meal) => (
-          <MealCard key={meal.name} meal={meal} />
+        {mealError && <p className="error">{mealError}</p>}
+        {meals.map((meal, i) => (
+          <MealCard key={`${meal.name}-${i}`} meal={meal} />
         ))}
       </section>
     </main>

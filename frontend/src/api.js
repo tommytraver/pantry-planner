@@ -34,3 +34,19 @@ export async function apiFetch(path, options = {}) {
   }
   return res;
 }
+
+// Turn a failed response into a readable message.
+// FastAPI sends either {"detail": "text"} or, for validation errors,
+// {"detail": [{"loc": [..., "field"], "msg": "..."}]}
+export async function getErrorMessage(res, fallback) {
+  try {
+    const data = await res.json();
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail)) {
+      return data.detail.map((e) => `${e.loc.at(-1)}: ${e.msg}`).join(". ");
+    }
+  } catch {
+    // Response had no JSON body; use the fallback
+  }
+  return fallback;
+}
