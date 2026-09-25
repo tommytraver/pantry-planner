@@ -21,3 +21,12 @@ class PantryItemCreate(PantryItemBase):
 # What the API returns
 class PantryItemRead(PantryItemBase):
     id: int
+
+# Nutrition per 100g, simplified from the USDA response
+class NutritionResult(SQLModel):
+    fdc_id: int
+    description: str
+    calories: float | None
+    protein_g: float | None
+    fat_g: float | None
+    carbs_g: float | None

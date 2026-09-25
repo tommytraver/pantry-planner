@@ -3,12 +3,31 @@ import "./App.css";
 
 const API_URL = "http://localhost:8000";
 
+function NutritionInfo({ info }) {
+  if (!info) return null;
+  if (info.status === "loading") return <p className="nutrition">Loading...</p>;
+  if (info.status === "error")
+    return <p className="nutrition error">Couldn't load nutrition.</p>;
+  if (info.status === "none") return <p className="nutrition">No match found.</p>;
+
+  const { description, calories, protein_g, carbs_g, fat_g } = info.data;
+  const fmt = (v) => (v == null ? "?" : Math.round(v));
+
+  return (
+    <p className="nutrition">
+      {description}, per 100g: {fmt(calories)} kcal · {fmt(protein_g)}g protein ·{" "}
+      {fmt(carbs_g)}g carbs · {fmt(fat_g)}g fat
+    </p>
+  );
+}
+
 function App() {
   const [items, setItems] = useState([]);
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [unit, setUnit] = useState("");
   const [error, setError] = useState("");
+  const [nutrition, setNutrition] = useState({});
 
   useEffect(() => {
     async function loadPantry() {
@@ -53,6 +72,25 @@ function App() {
     }
   }
 
+  async function loadNutrition(item) {
+    setNutrition((prev) => ({ ...prev, [item.id]: { status: "loading" } }));
+    try {
+      const res = await fetch(
+        `${API_URL}/nutrition?query=${encodeURIComponent(item.name)}`
+      );
+      if (!res.ok) throw new Error();
+      const results = await res.json();
+      setNutrition((prev) => ({
+        ...prev,
+        [item.id]: results.length
+          ? { status: "done", data: results[0] }
+          : { status: "none" },
+      }));
+    } catch {
+      setNutrition((prev) => ({ ...prev, [item.id]: { status: "error" } }));
+    }
+  }
+
   return (
     <main className="app">
       <h1>Pantry</h1>
@@ -86,10 +124,16 @@ function App() {
         <ul className="pantry-list">
           {items.map((item) => (
             <li key={item.id}>
-              <span>
-                {item.name} ({item.quantity} {item.unit})
-              </span>
-              <button onClick={() => deleteItem(item.id)}>Delete</button>
+              <div className="item-row">
+                <span>
+                  {item.name} ({item.quantity} {item.unit})
+                </span>
+                <div className="item-actions">
+                  <button onClick={() => loadNutrition(item)}>Nutrition</button>
+                  <button onClick={() => deleteItem(item.id)}>Delete</button>
+                </div>
+              </div>
+              <NutritionInfo info={nutrition[item.id]} />
             </li>
           ))}
         </ul>

@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
 
 from database import create_tables, get_session
-from models import PantryItem, PantryItemCreate, PantryItemRead
+from models import NutritionResult, PantryItem, PantryItemCreate, PantryItemRead
+from nutrition import search_foods
 
 
 @asynccontextmanager
@@ -52,3 +53,7 @@ def delete_pantry_item(item_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Item not found")
     session.delete(item)
     session.commit()
+
+@app.get("/nutrition")
+async def get_nutrition(query: str = Query(min_length=1)) -> list[NutritionResult]:
+    return await search_foods(query)
