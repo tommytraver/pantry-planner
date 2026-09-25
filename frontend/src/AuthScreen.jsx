@@ -31,7 +31,7 @@ function AuthScreen({ onLogin }) {
     async function ping() {
       for (let attempt = 0; attempt < 12 && !cancelled; attempt++) {
         try {
-          const res = await fetch(`${API_URL}/health`);
+          const res = await fetch(`${API_URL}/`);
           if (res.ok) {
             if (!cancelled) setServerAwake(true);
             return;
@@ -57,9 +57,12 @@ function AuthScreen({ onLogin }) {
     try {
       if (isSignup) {
         const res = await postJson("/auth/signup", { email, password });
-        if (res.status === 409) throw new Error("That email is already registered. Log in instead.");
+        if (res.status === 409)
+          throw new Error("That email is already registered. Log in instead.");
         if (!res.ok)
-          throw new Error("Use a valid email and a password of at least 8 characters.");
+          throw new Error(
+            "Use a valid email and a password of at least 8 characters.",
+          );
       }
 
       const res = await postJson("/auth/login", { email, password });
@@ -67,7 +70,9 @@ function AuthScreen({ onLogin }) {
       const data = await res.json();
       onLogin(data.access_token);
     } catch (err) {
-      setError(err instanceof TypeError ? "Can't reach the server." : err.message);
+      setError(
+        err instanceof TypeError ? "Can't reach the server." : err.message,
+      );
     } finally {
       setLoading(false);
     }
@@ -82,7 +87,9 @@ function AuthScreen({ onLogin }) {
       const data = await res.json();
       onLogin(data.access_token);
     } catch (err) {
-      setError(err instanceof TypeError ? "Can't reach the server." : err.message);
+      setError(
+        err instanceof TypeError ? "Can't reach the server." : err.message,
+      );
     } finally {
       setLoading(false);
     }
@@ -91,12 +98,14 @@ function AuthScreen({ onLogin }) {
   return (
     <main className="auth">
       <h1>Pantry Planner</h1>
-      <p className="auth-tagline">Turn what's in your kitchen into high-protein meals.</p>
+      <p className="auth-tagline">
+        Turn what's in your kitchen into high-protein meals.
+      </p>
 
       {!serverAwake && slowWake && (
         <p className="status wake-notice">
-          Waking up the server. Free hosting sleeps when idle, so the first load can take up to a
-          minute.
+          Waking up the server. Free hosting sleeps when idle, so the first load
+          can take up to a minute.
         </p>
       )}
 
@@ -128,7 +137,12 @@ function AuthScreen({ onLogin }) {
               ? "Create account"
               : "Log in"}
         </button>
-        <button className="btn btn-ghost" type="button" onClick={startDemo} disabled={loading}>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={startDemo}
+          disabled={loading}
+        >
           Try the demo, no account needed
         </button>
       </form>

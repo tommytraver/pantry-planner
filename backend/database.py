@@ -5,7 +5,9 @@ from sqlmodel import Session, SQLModel, create_engine
 
 load_dotenv()
 
-engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+# Accept plain postgresql:// URLs too (the form most hosts give you)
+database_url = os.environ["DATABASE_URL"].replace("postgresql://", "postgresql+psycopg://", 1)
+engine = create_engine(database_url, pool_pre_ping=True)
 
 
 def create_tables():
