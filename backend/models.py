@@ -30,3 +30,11 @@ class NutritionResult(SQLModel):
     protein_g: float | None
     fat_g: float | None
     carbs_g: float | None
+
+class MealSuggestion(SQLModel):
+    name: str
+    ingredients: list[str]
+    steps: list[str]
+    protein_g: int
+    calories: int
+    dishes: int

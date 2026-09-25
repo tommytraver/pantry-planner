@@ -8,16 +8,37 @@ function NutritionInfo({ info }) {
   if (info.status === "loading") return <p className="nutrition">Loading...</p>;
   if (info.status === "error")
     return <p className="nutrition error">Couldn't load nutrition.</p>;
-  if (info.status === "none") return <p className="nutrition">No match found.</p>;
+  if (info.status === "none")
+    return <p className="nutrition">No match found.</p>;
 
   const { description, calories, protein_g, carbs_g, fat_g } = info.data;
   const fmt = (v) => (v == null ? "?" : Math.round(v));
 
   return (
     <p className="nutrition">
-      {description}, per 100g: {fmt(calories)} kcal · {fmt(protein_g)}g protein ·{" "}
-      {fmt(carbs_g)}g carbs · {fmt(fat_g)}g fat
+      {description}, per 100g: {fmt(calories)} kcal · {fmt(protein_g)}g protein
+      · {fmt(carbs_g)}g carbs · {fmt(fat_g)}g fat
     </p>
+  );
+}
+
+function MealCard({ meal }) {
+  return (
+    <div className="meal-card">
+      <h3>{meal.name}</h3>
+      <p className="meal-stats">
+        ~{meal.protein_g}g protein · ~{meal.calories} kcal · {meal.dishes}{" "}
+        {meal.dishes === 1 ? "dish" : "dishes"} to wash
+      </p>
+      <p>
+        <strong>Ingredients:</strong> {meal.ingredients.join(", ")}
+      </p>
+      <ol>
+        {meal.steps.map((step, i) => (
+          <li key={i}>{step}</li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -28,6 +49,8 @@ function App() {
   const [unit, setUnit] = useState("");
   const [error, setError] = useState("");
   const [nutrition, setNutrition] = useState({});
+  const [meals, setMeals] = useState([]);
+  const [mealStatus, setMealStatus] = useState("idle");
 
   useEffect(() => {
     async function loadPantry() {
@@ -76,7 +99,7 @@ function App() {
     setNutrition((prev) => ({ ...prev, [item.id]: { status: "loading" } }));
     try {
       const res = await fetch(
-        `${API_URL}/nutrition?query=${encodeURIComponent(item.name)}`
+        `${API_URL}/nutrition?query=${encodeURIComponent(item.name)}`,
       );
       if (!res.ok) throw new Error();
       const results = await res.json();
@@ -88,6 +111,18 @@ function App() {
       }));
     } catch {
       setNutrition((prev) => ({ ...prev, [item.id]: { status: "error" } }));
+    }
+  }
+
+  async function suggestMeals() {
+    setMealStatus("loading");
+    try {
+      const res = await fetch(`${API_URL}/meals/suggest`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      setMeals(await res.json());
+      setMealStatus("done");
+    } catch {
+      setMealStatus("error");
     }
   }
 
@@ -138,6 +173,22 @@ function App() {
           ))}
         </ul>
       )}
+      <section className="meals">
+        <button
+          onClick={suggestMeals}
+          disabled={items.length === 0 || mealStatus === "loading"}
+        >
+          {mealStatus === "loading"
+            ? "Thinking..."
+            : "Suggest high-protein meals"}
+        </button>
+        {mealStatus === "error" && (
+          <p className="error">Couldn't get suggestions. Try again.</p>
+        )}
+        {meals.map((meal) => (
+          <MealCard key={meal.name} meal={meal} />
+        ))}
+      </section>
     </main>
   );
 }

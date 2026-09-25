@@ -5,8 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
 
 from database import create_tables, get_session
-from models import NutritionResult, PantryItem, PantryItemCreate, PantryItemRead
+from models import (
+    MealSuggestion,
+    NutritionResult,
+    PantryItem,
+    PantryItemCreate,
+    PantryItemRead,
+)
 from nutrition import search_foods
+from suggestions import suggest_meals
 
 
 @asynccontextmanager
@@ -57,3 +64,10 @@ def delete_pantry_item(item_id: int, session: Session = Depends(get_session)):
 @app.get("/nutrition")
 async def get_nutrition(query: str = Query(min_length=1)) -> list[NutritionResult]:
     return await search_foods(query)
+
+@app.post("/meals/suggest")
+async def suggest(session: Session = Depends(get_session)) -> list[MealSuggestion]:
+    items = session.exec(select(PantryItem)).all()
+    if not items:
+        raise HTTPException(status_code=400, detail="Add pantry items first")
+    return await suggest_meals(items)
